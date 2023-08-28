@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 #![deny(
     clippy::all,
     clippy::pedantic,
@@ -10,20 +10,109 @@
 )]
 // #![warn(missing_debug_implementations)]
 #![allow(clippy::enum_glob_use)]
-use axum::Router;
+#![allow(clippy::wildcard_imports)]
+#![allow(clippy::unused_async)]
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{State, WebSocketUpgrade},
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
+
 use tower_http::{
+    compression::CompressionLayer,
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
+use tracing::info;
+use ultitato::{
+    handlers::*,
+    state::{AppArc, AppState},
+};
 
-#[shuttle_runtime::main]
-async fn main() -> shuttle_axum::ShuttleAxum {
-    let router = Router::new()
-        .nest_service("/", ServeFile::new("assets/index.html"))
-        .nest_service("/play", ServeFile::new("assets/play.html"))
-        .nest_service("/js", ServeDir::new("assets/js"))
-        .nest_service("/css", ServeDir::new("assets/css"))
-        .layer(TraceLayer::new_for_http());
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt().init();
+    info!("App opened, binding to 0.0.0.0:8080");
 
-    Ok(router.into())
+    let state = Arc::new(AppState::default());
+
+    axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
+        .serve(
+            runtime_router()
+                .with_state(state.clone())
+                .into_make_service(),
+        )
+        .with_graceful_shutdown(shutdown::signal())
+        .await
+        .unwrap();
+
+    state.waiting().drain().for_each(remove_waiting);
+
+    info!("Shutdown finished, App Closed");
+}
+fn runtime_router() -> Router<AppArc> {
+    Router::new()
+        .route_service("/", ServeFile::new("assets/html/index.html"))
+        .route_service("/local", ServeFile::new("assets/html/local.html"))
+        .route_service("/online", ServeFile::new("assets/html/online.html"))
+        .route_service("/js", ServeDir::new("assets/js"))
+        .route("/register-host", get(register_host_handler))
+        .route("/register-join", get(register_join_handler))
+        .route("/play", get(handle_ws))
+        .fallback_service(ServeFile::new("assets/html/404.html"))
+        .layer(TraceLayer::new_for_http())
+        .layer(CompressionLayer::new())
+}
+async fn handle_ws() -> impl IntoResponse {}
+
+async fn register_host_handler(
+    socket: WebSocketUpgrade,
+    State(state): State<AppArc>,
+) -> impl IntoResponse {
+    socket.on_upgrade(|socket| handle_register_host(socket, state))
+}
+
+async fn register_join_handler(
+    socket: WebSocketUpgrade,
+    State(state): State<AppArc>,
+) -> impl IntoResponse {
+    socket.on_upgrade(|socket| handle_register_join(socket, state))
+}
+
+mod shutdown {
+    use tokio::signal;
+    use tracing::info;
+
+    pub async fn signal() {
+        let ctrl_c = async {
+            signal::ctrl_c()
+                .await
+                .expect("failed to install Ctrl+C handler");
+        };
+
+        #[cfg(unix)]
+        let terminate = async {
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("failed to install signal handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {
+                println!();
+                info!("Ctrl-C received, app shutdown commencing");
+            },
+            _ = terminate => {
+                info!("SIGTERM received, app shutdown commencing");
+            },
+        }
+    }
 }

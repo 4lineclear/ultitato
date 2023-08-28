@@ -3,7 +3,6 @@
   <head>
     <title>Ultitato</title>
     <!-- Potato favicon -->
-
     <link
       rel="icon"
       type="image/x-icon"
@@ -21,9 +20,26 @@
   </head>
 
   <body>
+    <!-- top of body to prevent blinking color -->
+    <script>
+      // Set theme to the user's preferred color scheme
+      function updateTheme() {
+        const colorMode = window.matchMedia("(prefers-color-scheme: dark)")
+          .matches
+          ? "dark"
+          : "light";
+        document.querySelector("html").setAttribute("data-bs-theme", colorMode);
+      }
+      // Set theme on load
+      updateTheme();
+      // Update theme when the preferred scheme changes
+      window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .addEventListener("change", updateTheme);
+    </script>
     <div class="text-center">
       <p class="fst-italic fixed-top text-end me-3">
-        <a href="https://icons8.com/icon/31728/potato">Icon</a> by
+        <a href="https://icons8.com/icon/31728/potato">Favicon</a> by
         <a href="https://icons8.com">Icons8</a>
       </p>
       <div class="container">
@@ -37,6 +53,17 @@
           </p>
         </div>
       </div>
+
+      <div class="position-absolute top-50 start-50 translate-middle">
+        <div class="text-center">
+          <h1 class="display-1 fw-bold">404</h1>
+          <p class="fs-3">
+            <span class="text-danger">Oops!</span> Page not found.
+          </p>
+          <p class="lead">The page you're looking for doesn't exist</p>
+          <a href="/" class="btn btn-primary">Go Home</a>
+        </div>
+      </div>
     </div>
     <!--JavaScript at end of body for optimized loading-->
     <script
@@ -44,23 +71,5 @@
       integrity="sha384-Rx+T1VzGupg4BHQYs2gCW9It+akI2MM/mndMCy36UVfodzcJcF0GGLxZIzObiEfa"
       crossorigin="anonymous"
     ></script>
-    <script>
-      // Set theme to the user's preferred color scheme
-      function updateTheme() {
-        const colorMode = window.matchMedia("(prefers-color-scheme: dark)")
-          .matches
-          ? "dark"
-          : "light";
-        document.querySelector("html").setAttribute("data-bs-theme", colorMode);
-      }
-
-      // Set theme on load
-      updateTheme();
-
-      // Update theme when the preferred scheme changes
-      window
-        .matchMedia("(prefers-color-scheme: dark)")
-        .addEventListener("change", updateTheme);
-    </script>
   </body>
 </html>

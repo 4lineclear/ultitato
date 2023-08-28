@@ -1,0 +1,8 @@
+#!/bin/bash
+
+echo -e "\033[0;32mCompiling TypeScript Start\033[0m"
+
+tsc --outFile ./assets/js/online.js ./assets/ts/online.ts
+tsc --outFile ./assets/js/local.js ./assets/ts/local.ts
+
+echo -e "\033[0;32mCompiling TypeScript Complete\033[0m"

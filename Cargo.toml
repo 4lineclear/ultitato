@@ -4,8 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.6.20"
-shuttle-axum = "0.24.0"
-shuttle-runtime = "0.24.0"
-tokio = "1.28.2"
-tower-http = { version = "0.4.3", features = ["fs"] }
+axum = { version = "0.6.20", features = ["ws"] }
+futures = "0.3.28"
+rand = "0.8.5"
+serde = { version = "1.0.186", features = ["derive"] }
+serde_json = "1.0.105"
+tokio = { version = "1.28.2", features = ["full"] }
+tower-http = { version = "0.4.3", features = [
+    "fs",
+    "trace",
+    "compression-full",
+] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"
+uuid = { version = "1.4.1", features = ["v4", "fast-rng"] }
