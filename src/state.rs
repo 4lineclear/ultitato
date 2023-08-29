@@ -14,8 +14,8 @@ pub const MAX_GAMES: usize = 1000;
 
 pub type AppArc = std::sync::Arc<AppState>;
 
-
-pub type Searching = Mutex<Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>>>;
+pub type Searching = Mutex<SearchingInner>;
+pub type SearchingInner = HashMap<Uuid, Arc<Mutex<SplitSink<WebSocket, Message>>>>;
 pub type Waiting = Arc<Mutex<HashMap<GameID, WaitingRoom>>>;
 
 #[derive(Default, Debug)]
@@ -32,7 +32,7 @@ impl AppState {
         self.waiting.lock().await
     }
     #[inline]
-    pub async fn searching(&self) -> MutexGuard<Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>>> {
+    pub async fn searching(&self) -> MutexGuard<SearchingInner> {
         self.searching.lock().await
     }
 }
@@ -40,7 +40,6 @@ impl AppState {
 #[derive(Debug)]
 pub struct WaitingRoom {
     pub host_id: Uuid,
-    pub join_id: Uuid,
     pub host_canceller: JoinHandle<()>,
     pub host_sender: SplitSink<WebSocket, Message>,
 }

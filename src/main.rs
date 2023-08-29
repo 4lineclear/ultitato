@@ -53,8 +53,8 @@ async fn main() {
         .unwrap();
     join_all(state.waiting().await.drain().map(remove_waiting)).await;
 
-    join_all(state.searching().await.drain(..).map(remove_searching)).await;
-    
+    join_all(state.searching().await.drain().map(remove_searching)).await;
+
     info!("Shutdown finished, App closed");
 }
 fn runtime_router() -> Router<AppArc> {
