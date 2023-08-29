@@ -24,11 +24,7 @@ use axum::{
 };
 
 use futures::future::join_all;
-use tower_http::{
-    compression::CompressionLayer,
-    services::{ServeDir, ServeFile},
-    trace::TraceLayer,
-};
+use tower_http::{compression::CompressionLayer, services::ServeFile, trace::TraceLayer};
 use tracing::info;
 use ultitato::{
     handlers::*,
@@ -62,7 +58,9 @@ fn runtime_router() -> Router<AppArc> {
         .route_service("/", ServeFile::new("assets/html/index.html"))
         .route_service("/local", ServeFile::new("assets/html/local.html"))
         .route_service("/online", ServeFile::new("assets/html/online.html"))
-        .route_service("/js", ServeDir::new("assets/js"))
+        .route_service("/shared.js", ServeFile::new("assets/js/shared.js"))
+        .route_service("/local.js", ServeFile::new("assets/js/local.js"))
+        .route_service("/online.js", ServeFile::new("assets/js/online.js"))
         .route("/register-host", get(register_host_handler))
         .route("/register-join", get(register_join_handler))
         .route("/play", get(handle_ws))

@@ -107,12 +107,11 @@ pub async fn remove_waiting((game_id, mut room): (GameID, WaitingRoom)) {
 }
 pub async fn handle_register_join(socket: WebSocket, state: AppArc) {
     async fn inner(socket: WebSocket, state: AppArc) -> Result<(), Error> {
-        info!("Join attempt start");
-
         let (sender, mut receiver) = socket.split();
-        let join_id = Uuid::new_v4();
         let sender = Arc::new(Mutex::new(sender));
-        state.searching.lock().await.insert(join_id, sender.clone());
+        let join_id = Uuid::new_v4();
+        state.searching().await.insert(join_id, sender.clone());
+        info!("Join attempt started with Join ID: \"{join_id}\"");
         while let Some(msg) = receiver.next().await {
             match msg? {
                 Message::Text(s) => {
@@ -135,6 +134,7 @@ pub async fn handle_register_join(socket: WebSocket, state: AppArc) {
                             })))
                             .await?;
                         sender.lock().await.close().await?;
+                        state.searching().await.remove(&join_id);
                         host_sender
                             .send(Message::Text(json_string!({
                                 "status": "RoomFound",
@@ -145,6 +145,7 @@ pub async fn handle_register_join(socket: WebSocket, state: AppArc) {
                         host_sender.close().await?;
                         host_canceller.abort();
                         info!("Join & Host messages sent");
+                        return Ok(());
                     } else {
                         info!("Game ID not found");
                         sender
@@ -156,7 +157,7 @@ pub async fn handle_register_join(socket: WebSocket, state: AppArc) {
                     }
                 }
                 Message::Close(_) => {
-                    state.searching.lock().await.remove(&join_id);
+                    state.searching().await.remove(&join_id);
                     info!("Join register attempt failed: user left before entering valid GameID");
                     break;
                 }

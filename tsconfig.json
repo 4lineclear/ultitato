@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "outDir": "./assets/js"
+    "outDir": "./assets/js",
+    "target": "ES6"
   },
   "include": ["./ts/**/*"]
 }

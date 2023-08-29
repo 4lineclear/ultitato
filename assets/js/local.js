@@ -1,1 +1,2 @@
-console.log("Hello");
+import { generateBoard } from "./shared.js";
+generateBoard();
