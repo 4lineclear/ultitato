@@ -12,6 +12,7 @@
 #![allow(clippy::enum_glob_use)]
 #![allow(clippy::wildcard_imports)]
 #![allow(clippy::unused_async)]
+#![allow(clippy::significant_drop_tightening)]
 
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ use axum::{
     Router,
 };
 
+use futures::future::join_all;
 use tower_http::{
     compression::CompressionLayer,
     services::{ServeDir, ServeFile},
@@ -49,10 +51,11 @@ async fn main() {
         .with_graceful_shutdown(shutdown::signal())
         .await
         .unwrap();
+    join_all(state.waiting().await.drain().map(remove_waiting)).await;
 
-    state.waiting().drain().for_each(remove_waiting);
-
-    info!("Shutdown finished, App Closed");
+    join_all(state.searching().await.drain(..).map(remove_searching)).await;
+    
+    info!("Shutdown finished, App closed");
 }
 fn runtime_router() -> Router<AppArc> {
     Router::new()

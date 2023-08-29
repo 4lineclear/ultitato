@@ -230,8 +230,12 @@
       crossorigin="anonymous"
     ></script>
     <script>
+      console.log(location.origin);
       function webSocket(str) {
         return new WebSocket(location.origin.replace(/^http/, "ws") + str);
+      }
+      function routeToOnline(game_id, user_id) {
+        console.log(location.origin + "/" + game_id + "/" + user_id);
       }
       async function registerHost() {
         let socket = webSocket("/register-host");
@@ -278,16 +282,23 @@
       async function registerJoin() {
         let socket = webSocket("/register-join");
         socket.onopen = (event) => {
+          socket.onclose = (event) => {
+            console.log("Closed!");
+          };
           socket.onmessage = (event) => {
             let msg = JSON.parse(event.data);
             console.log(msg);
-          switch (msg["status"]) {
-            case "RoomFound":
-              break;
-            case "RoomNotFound":
-              break;
-            default:
-          }
+            switch (msg["status"]) {
+              case "ServerClosed":
+                socket.close();
+                alert("Server has been closed");
+                break;
+              case "RoomFound":
+                break;
+              case "RoomNotFound":
+                break;
+              default:
+            }
           };
           document
             .getElementById("join-modal")

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     base36::GameID,
     state::{AppArc, WaitingRoom, MAX_GAMES},
@@ -6,8 +8,12 @@ use axum::{
     extract::ws::{Message, WebSocket},
     Error,
 };
-use futures::{stream::SplitStream, SinkExt, StreamExt};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use serde_json::json;
+use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -16,7 +22,7 @@ pub async fn handle_register_host(socket: WebSocket, state: AppArc) {
         info!("Creating waiting room");
         let (mut sender, receiver) = socket.split();
 
-        if state.waiting().len() >= MAX_GAMES {
+        if state.waiting().await.len() >= MAX_GAMES {
             error!("Max rooms hit: {state:?}");
             return sender
                 .send(Message::Text(
@@ -30,7 +36,7 @@ pub async fn handle_register_host(socket: WebSocket, state: AppArc) {
         }
         let mut game_id = GameID::new_rand(&state.rand_gen);
         loop {
-            if !state.waiting().contains_key(&game_id) {
+            if !state.waiting().await.contains_key(&game_id) {
                 break;
             }
             info!("Duplicate ID hit: {game_id:?}");
@@ -53,7 +59,7 @@ pub async fn handle_register_host(socket: WebSocket, state: AppArc) {
             .map_err(|e| (e, Some(game_id.clone())))?;
         info!("Host ID sent successfully");
 
-        state.waiting().insert(
+        state.waiting().await.insert(
             game_id.clone(),
             WaitingRoom {
                 host_id,
@@ -68,7 +74,7 @@ pub async fn handle_register_host(socket: WebSocket, state: AppArc) {
         Err((e, None)) => error!("Error sending message to host: {e}"),
         Err((e, Some(game_id))) => {
             info!("Removed game of ID: {game_id}");
-            state.waiting().remove(&game_id);
+            state.waiting().await.remove(&game_id);
             panic!("Error sending message to host: {e}")
         }
         _ => info!("Waiting room created"),
@@ -85,64 +91,92 @@ fn host_task(
                 Some(m) => info!("Message received: {m:?}"),
                 None => {
                     info!("Removing game of id: {game_id}");
-                    state.waiting().remove(&game_id);
+                    state.waiting().await.remove(&game_id);
                     return;
                 }
             }
         }
     })
 }
-pub fn remove_waiting((game_id, mut room): (GameID, WaitingRoom)) {
-    tokio::spawn(async move {
-        room.host_canceller.abort();
-        room.host_sender
-            .send(Message::Text(
-                json!({
-                    "status": "ServerClosed"
-                })
-                .to_string(),
-            ))
-            .await
-            .unwrap()
-    });
+pub async fn remove_waiting((game_id, mut room): (GameID, WaitingRoom)) {
+    room.host_canceller.abort();
+    room.host_sender
+        .send(Message::Text(
+            json!({
+                "status": "ServerClosed"
+            })
+            .to_string(),
+        ))
+        .await
+        .unwrap();
     info!("Room removed: {game_id:?}");
+}
+pub async fn remove_searching(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
+    sender
+        .lock()
+        .await
+        .send(Message::Text(
+            json!({
+                "status": "ServerClosed"
+            })
+            .to_string(),
+        ))
+        .await
+        .unwrap();
+
+    info!("Searcher removed");
 }
 pub async fn handle_register_join(socket: WebSocket, state: AppArc) {
     async fn inner(socket: WebSocket, state: AppArc) -> Result<(), Error> {
         info!("Join attempt start");
-        let (mut sender, mut receiver) = socket.split();
 
+        let (sender, mut receiver) = socket.split();
+        let sender = Arc::new(Mutex::new(sender));
+        state.searching.lock().await.push(sender.clone());
         while let Some(msg) = receiver.next().await {
             match msg? {
                 Message::Text(s) => {
                     info!("Received Join message: '{s}'");
-                    let entry = state.waiting().remove_entry(&s.into());
-                    if let Some((game_id, mut room)) = entry {
-                        info!("Game of ID: '{game_id}' found");
+                    let entry = state.waiting().await.remove(&s.clone().into());
+                    if let Some(WaitingRoom {
+                        host_id,
+                        join_id,
+                        host_canceller,
+                        mut host_sender,
+                    }) = entry
+                    {
+                        info!("Game of ID: '{s}' found");
                         sender
+                            .lock()
+                            .await
                             .send(Message::Text(
                                 json!({
                                     "status": "RoomFound",
-                                    "game-id": game_id.to_string(),
-                                    "join-id": room.join_id.to_string(),
+                                    "game-id": s.to_string(),
+                                    "join-id": join_id.to_string(),
                                 })
                                 .to_string(),
                             ))
                             .await?;
-                        room.host_sender
+                        sender.lock().await.close().await?;
+                        host_sender
                             .send(Message::Text(
                                 json!({
                                     "status": "RoomFound",
-                                    "game-id": game_id.to_string(),
-                                    "host-id": room.host_id.to_string(),
+                                    "game-id": s.to_string(),
+                                    "host-id": host_id.to_string(),
                                 })
                                 .to_string(),
                             ))
                             .await?;
+                        host_sender.close().await?;
+                        host_canceller.abort();
                         info!("Join & Host messages sent");
                     } else {
                         info!("Game ID not found");
                         sender
+                            .lock()
+                            .await
                             .send(Message::Text(
                                 json!({ "status": "RoomNotFound" }).to_string(),
                             ))
@@ -157,6 +191,8 @@ pub async fn handle_register_join(socket: WebSocket, state: AppArc) {
                 msg => {
                     info!("Invalid message received: {msg:?}");
                     return sender
+                        .lock()
+                        .await
                         .send(Message::Text(json!({"status": "Invalid"}).to_string()))
                         .await;
                 }
